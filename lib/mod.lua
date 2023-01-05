@@ -2,6 +2,10 @@ local mod = require 'core/mods'
 
 local JF_I2C_FREQ = 0.02
 
+if note_players == nil then
+    note_players = {}
+end
+
 function add_mono_player(idx)
     local player = {
         count = 0
