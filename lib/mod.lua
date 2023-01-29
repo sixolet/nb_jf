@@ -6,6 +6,52 @@ if note_players == nil then
     note_players = {}
 end
 
+function add_kit_player()
+    local player = {
+        counts = {0, 0, 0, 0, 0, 0}
+    }
+
+    function player:note_on(note, vel)
+        local n = (note - 1)%6 + 1
+        self.counts[n] = self.counts[n] + 1
+        crow.ii.jf.vtrigger(n, 8*vel)
+    end
+
+    function player:note_off(note)
+        local n = (note - 1)%6 + 1
+        self.counts[n] = self.counts[n] - 1
+        if self.counts[n] < 0 then self.counts[n] = 0 end
+        if self.counts[n] <= 0 then
+            crow.ii.jf.trigger((note - 1)%6 + 1, 0)
+        end
+    end
+
+    function player:modulate(val)
+        crow.ii.jf.transpose(-2*val)
+    end
+
+    function player:describe()
+        return {
+            name = "jf kit",
+
+            supports_bend = false,
+            supports_slew = false,
+            modulate_description = "time",
+            style = "kit",
+        }
+    end
+
+    function player:stop_all()
+        crow.ii.jf.trigger(0, 0)
+    end
+
+    function player:delayed_active()
+        crow.ii.jf.mode(0)
+    end
+
+    note_players["jf kit"] = player
+end
+
 function add_mono_player(idx)
     local player = {
         count = 0
@@ -191,4 +237,5 @@ mod.hook.register("script_pre_init", "nb jf pre init", function()
     end
     add_unison_player()
     add_poly_player()
+    add_kit_player()
 end)
