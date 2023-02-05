@@ -1,4 +1,5 @@
 local mod = require 'core/mods'
+local voice = require 'lib/voice'
 
 local JF_I2C_FREQ = 0.02
 
@@ -6,7 +7,7 @@ if note_players == nil then
     note_players = {}
 end
 
-function add_kit_player()
+local function add_kit_player()
     local player = {
         counts = {0, 0, 0, 0, 0, 0}
     }
@@ -52,9 +53,10 @@ function add_kit_player()
     note_players["jf kit"] = player
 end
 
-function add_mono_player(idx)
+local function add_mono_player(idx)
     local player = {
-        count = 0
+        count = 0,
+        note = nil
     }
 
     function player:add_params()
@@ -64,6 +66,7 @@ function add_mono_player(idx)
     end
 
     function player:note_on(note, vel)
+        self.note = note
         self.count = self.count + 1
         self.old_v8 = player.cur_v8
         self.v8 = (note - 60) / 12
@@ -85,7 +88,7 @@ function add_mono_player(idx)
                         elapsed = slew
                     end
                     self.cur_v8 = (elapsed/slew)*player.v8 + (1 - elapsed/slew)*player.old_v8
-                    crow.ii.jf.pitch(idx, player.cur_v8)
+                    crow.ii.jf.pitch(idx, self.cur_v8 + self.bend/12)
                     clock.sleep(JF_I2C_FREQ)
                 end
             end)
@@ -94,6 +97,12 @@ function add_mono_player(idx)
 
     function player:set_slew(s)
         params:set("nb_jf_slew_"..idx, s)
+    end
+
+    function player:pitch_bend(note, val)
+        if note ~= self.note then return end
+        self.bend = val
+        crow.ii.jf.pitch(idx, self.cur_v8 + self.bend / 12)
     end
 
     function player:note_off(note)
@@ -107,7 +116,7 @@ function add_mono_player(idx)
     function player:describe(note)
         return {
             name = "jf n "..idx,
-            supports_bend = false,
+            supports_bend = true,
             supports_slew = true,
             modulate_description = "unsupported",
         }
@@ -135,7 +144,7 @@ function add_mono_player(idx)
     note_players["jf n "..idx] = player
 end
 
-function add_unison_player()
+local function add_unison_player()
     local player = {
         count = 0
     }
@@ -195,13 +204,13 @@ function add_unison_player()
     note_players["jf unison"] = player
 end
 
-function add_poly_player()
+local function add_poly_player()
     local player = {
     }
 
     function player:note_on(note, vel)
         local v8 = (note - 60)/12
-        local v_vel = vel * 5
+        local v_vel =  vel^(3/2) * 5
         crow.ii.jf.play_note(v8, v_vel)
     end
 
@@ -231,11 +240,80 @@ function add_poly_player()
     note_players["jf poly"] = player
 end
 
+local function add_mpe_player()
+    local player = {
+        alloc = voice.new(6, voice.MODE_LRU),
+        notes = {},
+    }
+
+    function player:note_on(note, vel)
+        local slot = self.notes[note]
+        if slot == nil then
+            slot = self.alloc:get()
+            slot.count = 1
+        end
+        slot.on_release = function()
+            crow.ii.jf.trigger(slot.id, 0)
+        end
+        self.notes[note] = slot
+        local v8 = (note - 60)/12
+        local v_vel = vel^(3/2) * 5
+        crow.ii.jf.pitch(slot.id, v8)
+        crow.ii.jf.vtrigger(slot.id, v_vel)
+    end
+
+    function player:pitch_bend(note, val)
+        local v8 = (note - 60 + val)/12
+        local slot = self.notes[note]
+        if slot ~= nil then
+            crow.ii.jf.pitch(slot.id, v8)
+        end
+    end
+
+    function player:note_off(note)
+        local slot = self.notes[note]
+        if slot ~= nil then
+            self.alloc:release(slot)
+        end
+        self.notes[note] = nil
+    end
+
+    function player:modulate_note(note, key, value)
+        if key == "amp" then
+            local v_vel = value^(3/2) * 5
+            local slot = self.notes[note]
+            if slot == nil then return end
+            crow.ii.jf.vtrigger(slot.id, v_vel)
+        end
+    end
+
+    function player:describe(note)
+        return {
+            name = "jf poly",
+            supports_bend = true,
+            supports_slew = false,
+            note_mod_targets = {"amp"},
+            modulate_description = "unsupported",
+        }
+    end
+
+    function player:stop_all()
+        crow.ii.jf.trigger(0, 0)
+    end
+
+    function player:delayed_active()
+        crow.ii.jf.mode(1)
+    end
+
+    note_players["jf mpe"] = player
+end
+
 mod.hook.register("script_pre_init", "nb jf pre init", function()
     for n=1,6 do
         add_mono_player(n)
     end
     add_unison_player()
     add_poly_player()
+    add_mpe_player()
     add_kit_player()
 end)
