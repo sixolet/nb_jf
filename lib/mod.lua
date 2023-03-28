@@ -56,6 +56,7 @@ end
 local function add_mono_player(idx)
     local player = {
         count = 0,
+        bend = 0,
         note = nil
     }
 
