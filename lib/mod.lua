@@ -207,8 +207,28 @@ end
 
 local function add_poly_player()
     local player = {
+        voice_count = 6,
     }
 
+    function player:add_params()
+        local alloc_modes = { "jf", "rotate", "random" }
+        local trigger_modes = { "gate", "trigger" }
+
+        params:add_group("nb_jf_poly", "jf poly", 3)
+        params:add_option("nb_jf_poly_trigger_mode", "trigger mode", trigger_modes, 1)
+        params:add_option("nb_jf_poly_alloc_mode", "voice mode", alloc_modes, 1)
+        params:add_number("nb_jf_poly_voice_count", "voice count", 1, 6, 6, function(p)
+            local alloc_mode = alloc_modes[params:get("nb_jf_poly_alloc_mode")]
+            return alloc_mode == "jf" and 6 or p.value
+        end)
+        params:set_action("nb_jf_poly_voice_count", function(value)
+            local alloc_mode = alloc_modes[params:get("nb_jf_poly_alloc_mode")]
+            if alloc_mode ~= "jf" then
+                self.voice_count = value
+            end
+        end)
+        params:hide("nb_jf_poly")
+    end
     function player:note_on(note, vel)
         local v8 = (note - 60)/12
         local v_vel =  vel^(3/2) * 5
@@ -236,6 +256,8 @@ local function add_poly_player()
 
     function player:delayed_active()
         crow.ii.jf.mode(1)
+        params:show("nb_jf_poly")
+        _menu.rebuild_params()
     end
 
     note_players["jf poly"] = player
