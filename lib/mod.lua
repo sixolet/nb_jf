@@ -85,7 +85,7 @@ local function add_mono_player(idx)
                 local elapsed = 0
                 while elapsed < slew do
                     elapsed = elapsed + JF_I2C_FREQ
-                    if elapsed > slew then 
+                    if elapsed > slew then
                         elapsed = slew
                     end
                     self.cur_v8 = (elapsed/slew)*player.v8 + (1 - elapsed/slew)*player.old_v8
@@ -140,7 +140,7 @@ local function add_mono_player(idx)
         end
         params:hide("nb_jf_n_"..idx)
         _menu.rebuild_params()
-    end    
+    end
 
     note_players["jf n "..idx] = player
 end
@@ -157,7 +157,7 @@ local function add_unison_player()
     end
 
     function player:note_on(note, vel)
-        self.count = self.count + 1        
+        self.count = self.count + 1
         self.v8 = (note - 60) / 12
         local v_vel = vel * 5
         local detune = params:get("nb_jf_unison_detune")
@@ -200,7 +200,7 @@ local function add_unison_player()
         end
         params:hide("nb_jf_unison")
         _menu.rebuild_params()
-    end    
+    end
 
     note_players["jf unison"] = player
 end
