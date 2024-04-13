@@ -85,7 +85,7 @@ local function add_mono_player(idx)
                 local elapsed = 0
                 while elapsed < slew do
                     elapsed = elapsed + JF_I2C_FREQ
-                    if elapsed > slew then 
+                    if elapsed > slew then
                         elapsed = slew
                     end
                     self.cur_v8 = (elapsed/slew)*player.v8 + (1 - elapsed/slew)*player.old_v8
@@ -140,7 +140,7 @@ local function add_mono_player(idx)
         end
         params:hide("nb_jf_n_"..idx)
         _menu.rebuild_params()
-    end    
+    end
 
     note_players["jf n "..idx] = player
 end
@@ -157,7 +157,7 @@ local function add_unison_player()
     end
 
     function player:note_on(note, vel)
-        self.count = self.count + 1        
+        self.count = self.count + 1
         self.v8 = (note - 60) / 12
         local v_vel = vel * 5
         local detune = params:get("nb_jf_unison_detune")
@@ -200,25 +200,74 @@ local function add_unison_player()
         end
         params:hide("nb_jf_unison")
         _menu.rebuild_params()
-    end    
+    end
 
     note_players["jf unison"] = player
 end
 
 local function add_poly_player()
     local player = {
+        voice_count = 6,
+        last_voice = 1,
+        release_fn = {},
+        alloc_modes = { "jf", "rotate", "random" },
+        trigger_modes = { "gate", "trigger" },
     }
+
+    function player:add_params()
+        params:add_group("nb_jf_poly", "jf poly", 3)
+        params:add_option("nb_jf_poly_trigger_mode", "trigger mode", self.trigger_modes, 1)
+        params:add_option("nb_jf_poly_alloc_mode", "alloc mode", self.alloc_modes, 1)
+        params:set_action("nb_jf_poly_alloc_mode", function(value)
+            if self.alloc_modes[value] ~= "jf" then
+                params:set("nb_jf_poly_voice_count", self.voice_count)
+            end
+        end)
+        params:add_number("nb_jf_poly_voice_count", "voice count", 1, 6, 6, function(p)
+            local alloc_mode = self.alloc_modes[params:get("nb_jf_poly_alloc_mode")]
+            return alloc_mode == "jf" and 6 or p.value
+        end)
+        params:set_action("nb_jf_poly_voice_count", function(value)
+            local alloc_mode = self.alloc_modes[params:get("nb_jf_poly_alloc_mode")]
+            if alloc_mode ~= "jf" then
+                self.voice_count = value
+            end
+        end)
+        params:hide("nb_jf_poly")
+    end
 
     function player:note_on(note, vel)
         local v8 = (note - 60)/12
         local v_vel =  vel^(3/2) * 5
-        crow.ii.jf.play_note(v8, v_vel)
+        local alloc_mode = self.alloc_modes[params:get("nb_jf_poly_alloc_mode")]
+
+        if alloc_mode == "jf" then
+            self.release_fn[note] = function()
+                crow.ii.jf.play_note(v8, 0)
+            end
+            crow.ii.jf.play_note(v8, v_vel)
+        elseif alloc_mode == "rotate" then
+            local next_voice = self.last_voice % self.voice_count + 1
+            self.last_voice = next_voice
+            self.release_fn[note] = function()
+                crow.ii.jf.trigger(next_voice, 0)
+            end
+            crow.ii.jf.play_voice(next_voice, v8, v_vel)
+        elseif alloc_mode == "random" then
+            local next_voice = math.random(self.voice_count)
+            self.release_fn[note] = function()
+                crow.ii.jf.trigger(next_voice, 0)
+            end
+            crow.ii.jf.play_voice(next_voice, v8, v_vel)
+        end
     end
 
     function player:note_off(note)
-        local v8 = (note - 60)/12
-        local v_vel = 0
-        crow.ii.jf.play_note(v8, v_vel)
+        local trigger_mode = self.trigger_modes[params:get("nb_jf_poly_trigger_mode")]
+
+        if trigger_mode == "gate" and self.release_fn[note] then
+            self.release_fn[note]()
+        end
     end
 
     function player:describe(note)
@@ -236,6 +285,8 @@ local function add_poly_player()
 
     function player:delayed_active()
         crow.ii.jf.mode(1)
+        params:show("nb_jf_poly")
+        _menu.rebuild_params()
     end
 
     note_players["jf poly"] = player
